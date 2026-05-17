@@ -1,0 +1,1442 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Demokratie-Simulator</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;900&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<!-- Firebase SDK (compat) -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+:root {
+  --bg:#0d0f14; --surface:#13161e; --surface2:#1a1e2a;
+  --border:rgba(255,255,255,0.07); --text:#e8e4da; --text-dim:#7a7d8a;
+  --gold:#c9a84c; --gold-glow:rgba(201,168,76,0.15);
+  --red:#e05252; --green:#4caf7d; --blue:#5b8dee;
+  --purple:#9b6ddf; --orange:#e0844a; --cyan:#4cb8c4;
+  --phase1:#4caf7d; --phase2:#e05252; --phase3:#9b6ddf;
+}
+body {
+  font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text);
+  min-height:100vh; display:flex; justify-content:center; padding:2rem 1rem 5rem;
+  background-image:
+    radial-gradient(ellipse at 20% 0%,rgba(201,168,76,.06) 0%,transparent 50%),
+    radial-gradient(ellipse at 80% 100%,rgba(91,141,238,.05) 0%,transparent 50%);
+}
+#game { max-width:760px; width:100%; }
+
+/* ══ SETUP ══ */
+#setup-screen {
+  background:var(--surface); border:1px solid var(--border); border-radius:16px;
+  padding:3rem 2.5rem; text-align:center; animation:fadeIn .6s ease;
+  box-shadow:0 20px 60px rgba(0,0,0,.5);
+}
+.setup-title { font-family:'Playfair Display',serif; font-size:30px; font-weight:700; margin-bottom:6px; }
+.setup-title span { color:var(--gold); }
+.setup-sub { font-size:12px; color:var(--text-dim); letter-spacing:.1em; text-transform:uppercase; margin-bottom:2rem; }
+.setup-divider { width:40px; height:1px; background:var(--gold); margin:0 auto 2rem; }
+.setup-field { margin-bottom:1.1rem; text-align:left; }
+.setup-label { font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.1em; margin-bottom:6px; display:block; }
+.setup-input {
+  width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:8px;
+  padding:11px 14px; font-size:15px; font-family:'DM Sans',sans-serif; color:var(--text);
+  outline:none; transition:border-color .2s;
+}
+.setup-input:focus { border-color:var(--gold); }
+.setup-input::placeholder { color:var(--text-dim); opacity:.6; }
+.setup-note { font-size:11px; color:var(--text-dim); margin:1.5rem 0; line-height:1.6; }
+.setup-start-btn {
+  width:100%; background:transparent; color:var(--gold); border:1.5px solid var(--gold);
+  border-radius:8px; padding:13px; font-family:'DM Sans',sans-serif; font-size:14px;
+  font-weight:600; letter-spacing:.06em; cursor:pointer; transition:all .25s; text-transform:uppercase;
+  margin-top:.5rem;
+}
+.setup-start-btn:hover { background:var(--gold); color:#0d0f14; box-shadow:0 0 28px rgba(201,168,76,.3); }
+.lb-preview-btn {
+  background:transparent; color:var(--text-dim); border:1px solid var(--border);
+  border-radius:8px; padding:10px 20px; font-family:'DM Sans',sans-serif; font-size:13px;
+  cursor:pointer; transition:all .2s; margin-top:12px; width:100%;
+}
+.lb-preview-btn:hover { border-color:var(--gold); color:var(--gold); }
+
+/* ══ HEADER ══ */
+.game-header { text-align:center; margin-bottom:1.4rem; padding:1.4rem 0 .9rem; }
+.game-header::after { content:''; display:block; width:50px; height:2px; background:var(--gold); margin:.8rem auto 0; border-radius:1px; }
+.game-title { font-family:'Playfair Display',serif; font-size:27px; font-weight:700; letter-spacing:.04em; }
+.game-title span { color:var(--gold); }
+.game-subtitle { font-size:11px; color:var(--text-dim); margin-top:4px; letter-spacing:.1em; text-transform:uppercase; }
+.president-name { font-size:12px; color:var(--gold); margin-top:5px; font-style:italic; }
+
+/* ══ TOP BAR ══ */
+.top-bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem; flex-wrap:wrap; gap:8px; }
+.phase-badge { font-size:11px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; padding:5px 14px; border-radius:20px; background:var(--surface2); border:1px solid var(--border); }
+.phase-badge.p1 { border-color:rgba(76,175,125,.4); color:var(--phase1); }
+.phase-badge.p2 { border-color:rgba(224,82,82,.4); color:var(--phase2); }
+.phase-badge.p3 { border-color:rgba(155,109,223,.4); color:var(--phase3); }
+.turn-badge { font-size:11px; color:var(--text-dim); background:var(--surface2); border:1px solid var(--border); border-radius:20px; padding:5px 13px; }
+
+/* ══ PROGRESS ══ */
+.progress-wrap { height:2px; background:rgba(255,255,255,.05); border-radius:2px; margin-bottom:1.1rem; overflow:hidden; }
+.progress-fill { height:100%; background:var(--gold); border-radius:2px; transition:width .5s ease; }
+
+/* ══ STATS ══ */
+.stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:1rem; }
+@media(min-width:560px){ .stats-grid { grid-template-columns:repeat(7,1fr); } }
+.stat { background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:10px 9px; transition:border-color .3s,background .3s; }
+.stat.warning { background:rgba(224,132,74,.08); border-color:rgba(224,132,74,.3); }
+.stat.danger  { background:rgba(224,82,82,.1);  border-color:rgba(224,82,82,.4); animation:pulse-danger 2s infinite; }
+@keyframes pulse-danger { 0%,100%{border-color:rgba(224,82,82,.4)} 50%{border-color:rgba(224,82,82,.8)} }
+.stat-label { font-size:9px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.08em; margin-bottom:4px; }
+.stat-val { font-size:18px; font-weight:700; font-family:'Playfair Display',serif; margin-bottom:4px; }
+.stat.danger .stat-val { color:var(--red); }
+.bar-wrap { height:3px; background:rgba(255,255,255,.07); border-radius:2px; overflow:hidden; }
+.bar-fill { height:100%; border-radius:2px; transition:width .7s cubic-bezier(.4,0,.2,1); }
+
+/* ══ INFO ROW ══ */
+.info-row { display:flex; gap:8px; margin-bottom:1rem; flex-wrap:wrap; }
+.decay-hint { font-size:11px; color:#8a7040; background:rgba(201,168,76,.06); border:1px solid rgba(201,168,76,.15); border-left:3px solid var(--gold); border-radius:8px; padding:8px 12px; line-height:1.5; flex:1; min-width:200px; }
+.news-ticker { font-size:11.5px; color:var(--text-dim); background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--gold); border-radius:8px; padding:8px 12px; font-style:italic; flex:1; min-width:180px; }
+
+/* ══ CRISIS ══ */
+#crisis-card { display:none; background:rgba(224,82,82,.07); border:1px solid rgba(224,82,82,.35); border-radius:12px; padding:1rem 1.3rem; margin-bottom:1rem; animation:slideIn .4s ease; }
+.crisis-header { font-size:10px; font-weight:700; color:var(--red); text-transform:uppercase; letter-spacing:.12em; margin-bottom:5px; }
+.crisis-text { font-size:13px; color:#c0a8a8; line-height:1.6; margin-bottom:7px; }
+.crisis-deltas { display:flex; flex-wrap:wrap; gap:5px; }
+
+/* ══ PHASE SCREEN ══ */
+#phase-screen { display:none; text-align:center; padding:2.5rem 2rem; background:var(--surface); border:1px solid var(--border); border-radius:16px; animation:fadeIn .6s ease; box-shadow:0 16px 50px rgba(0,0,0,.5); }
+.phase-num { font-size:10px; text-transform:uppercase; letter-spacing:.2em; color:var(--text-dim); margin-bottom:10px; }
+.phase-title-big { font-family:'Playfair Display',serif; font-size:26px; font-weight:700; margin-bottom:12px; }
+.phase-divider { width:40px; height:1px; background:var(--gold); margin:1.1rem auto; }
+.phase-desc { font-size:14px; color:var(--text-dim); line-height:1.8; max-width:480px; margin:0 auto 1.2rem; }
+.war-stance-info { display:none; background:rgba(224,82,82,.06); border:1px solid rgba(224,82,82,.2); border-radius:9px; padding:10px 14px; margin:.75rem 0; font-size:12.5px; color:#c0a8a8; line-height:1.5; }
+.phase-stats-recap { display:flex; justify-content:center; gap:10px; flex-wrap:wrap; margin:0 0 1.4rem; }
+.recap-item { font-size:11px; color:var(--text-dim); background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:4px 10px; }
+.recap-item span { color:var(--text); font-weight:600; }
+
+/* ══ EVENT CARD ══ */
+#event-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:1.7rem; margin-bottom:1rem; animation:slideIn .4s ease; box-shadow:0 8px 40px rgba(0,0,0,.4); display:none; }
+@keyframes slideIn { from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)} }
+@keyframes fadeIn  { from{opacity:0}to{opacity:1} }
+.event-meta { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.event-tag { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.12em; }
+.event-turn-lbl { font-size:11px; color:var(--text-dim); margin-left:auto; }
+.event-title { font-family:'Playfair Display',serif; font-size:21px; font-weight:600; margin-bottom:9px; line-height:1.3; }
+.event-desc { font-size:14px; color:#9a9caa; line-height:1.78; margin-bottom:1.4rem; }
+.choices-label { font-size:10px; text-transform:uppercase; letter-spacing:.1em; color:var(--text-dim); margin-bottom:7px; }
+.choices { display:flex; flex-direction:column; gap:8px; }
+.choice-btn { background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:12px 15px; font-size:13.5px; font-family:'DM Sans',sans-serif; color:var(--text); cursor:pointer; text-align:left; line-height:1.5; transition:all .2s; position:relative; overflow:hidden; }
+.choice-btn::before { content:''; position:absolute; left:0;top:0;bottom:0; width:3px; background:var(--gold); transform:scaleY(0); transition:transform .2s; border-radius:3px 0 0 3px; }
+.choice-btn:hover { border-color:rgba(201,168,76,.4); background:rgba(201,168,76,.05); transform:translateX(2px); }
+.choice-btn:hover::before,.choice-btn.selected::before { transform:scaleY(1); }
+.choice-btn.selected { border-color:var(--gold); background:var(--gold-glow); }
+.choice-btn:disabled { cursor:default; }
+.effect-hint { font-size:11.5px; color:var(--text-dim); margin-top:3px; font-style:italic; }
+
+/* ══ OUTCOME CARD ══ */
+#outcome-card { display:none; background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:1.7rem; margin-bottom:1rem; animation:slideIn .4s ease; box-shadow:0 8px 40px rgba(0,0,0,.4); }
+.outcome-header { font-size:10px; text-transform:uppercase; letter-spacing:.1em; color:var(--text-dim); margin-bottom:4px; }
+.outcome-title { font-family:'Playfair Display',serif; font-size:18px; font-weight:600; margin-bottom:7px; }
+.outcome-text { font-size:14px; color:#9a9caa; line-height:1.78; margin-bottom:1rem; }
+.section-label { font-size:10px; text-transform:uppercase; letter-spacing:.1em; color:var(--text-dim); margin-bottom:6px; margin-top:10px; }
+.delta-list { display:flex; flex-wrap:wrap; gap:5px; margin-bottom:7px; }
+.delta { font-size:11.5px; border-radius:6px; padding:3px 9px; font-weight:600; }
+.delta.pos { background:rgba(76,175,125,.15); color:#6ddf9b; border:1px solid rgba(76,175,125,.3); }
+.delta.neg { background:rgba(224,82,82,.12); color:#e08080; border:1px solid rgba(224,82,82,.3); }
+.delta.neutral { background:rgba(255,255,255,.05); color:var(--text-dim); border:1px solid var(--border); }
+.surprise-box { background:rgba(201,168,76,.07); border:1px solid rgba(201,168,76,.25); border-radius:9px; padding:11px 14px; margin:10px 0; font-size:13px; color:#c0a870; line-height:1.6; }
+.next-btn { margin-top:1.2rem; font-family:'DM Sans',sans-serif; font-size:13.5px; font-weight:600; background:transparent; color:var(--gold); border:1.5px solid var(--gold); border-radius:8px; padding:11px 26px; cursor:pointer; transition:all .25s; letter-spacing:.05em; width:100%; text-transform:uppercase; }
+.next-btn:hover { background:var(--gold); color:#0d0f14; box-shadow:0 0 28px rgba(201,168,76,.3); }
+
+/* ══ GAMEOVER ══ */
+#gameover { display:none; text-align:center; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:2.5rem 2rem; animation:fadeIn .8s ease; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+.go-label { font-size:10px; text-transform:uppercase; letter-spacing:.2em; color:var(--text-dim); margin-bottom:10px; }
+.gameover-title { font-family:'Playfair Display',serif; font-size:25px; font-weight:700; margin-bottom:10px; }
+.gameover-text { font-size:14px; color:#9a9caa; line-height:1.8; margin-bottom:1.1rem; max-width:480px; margin-left:auto; margin-right:auto; white-space:pre-line; }
+.legacy-box { background:var(--surface2); border:1px solid var(--border); border-radius:9px; padding:14px 18px; margin:.75rem 0 1rem; font-size:12.5px; color:#9a9caa; line-height:1.75; text-align:left; white-space:pre-line; }
+.score-row { display:flex; justify-content:center; gap:14px; flex-wrap:wrap; margin:1rem 0 1.5rem; }
+.score-item { text-align:center; }
+.score-num { font-size:22px; font-weight:700; font-family:'Playfair Display',serif; }
+.score-num.good { color:var(--green); } .score-num.ok { color:var(--orange); } .score-num.bad { color:var(--red); }
+.score-lbl { font-size:9px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.08em; margin-top:2px; }
+.decision-log { background:var(--surface2); border:1px solid var(--border); border-radius:9px; max-height:160px; overflow-y:auto; margin:0 0 1rem; text-align:left; }
+.log-item { font-size:11.5px; padding:7px 14px; border-bottom:1px solid var(--border); display:flex; gap:8px; align-items:flex-start; }
+.log-item:last-child { border-bottom:none; }
+.log-phase { font-size:9px; font-weight:700; padding:2px 6px; border-radius:4px; flex-shrink:0; margin-top:1px; text-transform:uppercase; }
+.log-phase.p1 { background:rgba(76,175,125,.2); color:var(--phase1); }
+.log-phase.p2 { background:rgba(224,82,82,.15); color:var(--phase2); }
+.log-phase.p3 { background:rgba(155,109,223,.15); color:var(--phase3); }
+.log-text { color:#9a9caa; line-height:1.4; }
+.action-btns { display:flex; gap:10px; flex-wrap:wrap; }
+.restart-btn { flex:1; min-width:120px; font-family:'DM Sans',sans-serif; font-size:13.5px; font-weight:600; background:transparent; color:var(--text-dim); border:1px solid var(--border); border-radius:8px; padding:11px; cursor:pointer; transition:all .25s; letter-spacing:.05em; text-transform:uppercase; }
+.restart-btn:hover { border-color:var(--gold); color:var(--gold); }
+.lb-btn { flex:1; min-width:120px; font-family:'DM Sans',sans-serif; font-size:13.5px; font-weight:600; background:transparent; color:var(--gold); border:1.5px solid var(--gold); border-radius:8px; padding:11px; cursor:pointer; transition:all .25s; letter-spacing:.05em; text-transform:uppercase; }
+.lb-btn:hover { background:var(--gold); color:#0d0f14; box-shadow:0 0 28px rgba(201,168,76,.3); }
+
+/* ══ LEADERBOARD ══ */
+#leaderboard-screen { display:none; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:2.5rem 2rem; animation:fadeIn .5s ease; }
+.lb-header { text-align:center; margin-bottom:2rem; }
+.lb-title { font-family:'Playfair Display',serif; font-size:26px; font-weight:700; margin-bottom:6px; }
+.lb-title span { color:var(--gold); }
+.lb-sub { font-size:11px; color:var(--text-dim); letter-spacing:.1em; text-transform:uppercase; }
+.lb-divider { width:40px; height:1px; background:var(--gold); margin:.9rem auto 0; }
+.lb-table { width:100%; border-collapse:collapse; margin-bottom:1.5rem; }
+.lb-table th { font-size:10px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.1em; text-align:left; padding:8px 12px; border-bottom:1px solid var(--border); }
+.lb-table th:last-child,.lb-table td:last-child { text-align:right; }
+.lb-table td { font-size:13px; padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.04); color:var(--text); vertical-align:middle; }
+.lb-table tr:last-child td { border-bottom:none; }
+.lb-table tr.my-row td { background:rgba(201,168,76,.07); }
+.lb-table tr.top1 td { background:rgba(201,168,76,.1); }
+.lb-rank { font-family:'Playfair Display',serif; font-size:16px; font-weight:700; color:var(--text-dim); }
+.lb-rank.gold   { color:#f0c040; }
+.lb-rank.silver { color:#b0b8c8; }
+.lb-rank.bronze { color:#c87840; }
+.lb-name { font-weight:600; }
+.lb-country { font-size:11px; color:var(--text-dim); margin-top:2px; }
+.lb-score { font-family:'Playfair Display',serif; font-size:18px; font-weight:700; }
+.lb-score.good { color:var(--green); }
+.lb-score.ok   { color:var(--orange); }
+.lb-score.bad  { color:var(--red); }
+.lb-phase { font-size:11px; color:var(--text-dim); }
+.lb-date { font-size:11px; color:var(--text-dim); }
+.lb-empty { text-align:center; color:var(--text-dim); font-size:14px; padding:2rem 0; font-style:italic; }
+.lb-back-btn { width:100%; font-family:'DM Sans',sans-serif; font-size:13.5px; font-weight:600; background:transparent; color:var(--text-dim); border:1px solid var(--border); border-radius:8px; padding:11px; cursor:pointer; transition:all .25s; letter-spacing:.05em; text-transform:uppercase; }
+.lb-back-btn:hover { border-color:var(--gold); color:var(--gold); }
+.lb-loading { text-align:center; color:var(--text-dim); font-size:13px; padding:2rem 0; }
+.new-entry-badge { display:inline-block; font-size:10px; font-weight:700; color:var(--gold); background:rgba(201,168,76,.15); border:1px solid rgba(201,168,76,.3); border-radius:10px; padding:2px 8px; margin-left:8px; vertical-align:middle; letter-spacing:.05em; }
+</style>
+</head>
+<body>
+<div id="game">
+
+<!-- ══════════ SETUP ══════════ -->
+<div id="setup-screen">
+  <div class="setup-title">Demokratie<span>Simulator</span></div>
+  <div class="setup-sub">Wie regierst du dein Land?</div>
+  <div class="setup-divider"></div>
+
+  <div class="setup-field">
+    <label class="setup-label" for="input-name">Ihr Name</label>
+    <input class="setup-input" id="input-name" type="text" placeholder="z.B. Laurenz" maxlength="40" autocomplete="off">
+  </div>
+  <div class="setup-field">
+    <label class="setup-label" for="input-country">Name Ihres Landes</label>
+    <input class="setup-input" id="input-country" type="text" placeholder="z.B. Österreich" maxlength="40" autocomplete="off">
+  </div>
+
+  <div class="setup-note">Ihre Punktzahl wird am Ende in der öffentlichen Rangliste gespeichert.</div>
+
+  <button class="setup-start-btn" onclick="startGame()">Präsidentschaft beginnen</button>
+  <button class="lb-preview-btn" onclick="showLeaderboard(null)">Rangliste ansehen</button>
+</div>
+
+<!-- ══════════ MAIN GAME ══════════ -->
+<div id="main-game" style="display:none;">
+  <div class="game-header">
+    <div class="game-title">Demokratie<span>Simulator</span></div>
+    <div class="game-subtitle" id="country-subtitle">Republik</div>
+    <div class="president-name" id="president-label"></div>
+  </div>
+
+  <div class="top-bar">
+    <div class="phase-badge p1" id="phase-badge">Phase I</div>
+    <div class="turn-badge" id="turn-badge">Monat 1</div>
+  </div>
+
+  <div class="progress-wrap">
+    <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+  </div>
+
+  <div class="stats-grid" id="stats-grid"></div>
+
+  <div class="info-row">
+    <div class="decay-hint">Werte sinken jährlich. Koalition unter 30 beschleunigt den Verfall. <p><strong>Game Over:</strong> Zustimmung &lt;15, Wirtschaft &lt;8, Stabilität &lt;12, Freiheit &lt;8 oder Koalition &lt;10</p></div>
+    <div class="news-ticker" id="news-ticker">Die Unabhängigkeit wurde erklärt. Eine neue Ära beginnt.</div>
+  </div>
+
+  <div id="crisis-card">
+    <div class="crisis-header">Unerwartete Krise</div>
+    <div class="crisis-text" id="crisis-text"></div>
+    <div class="crisis-deltas" id="crisis-deltas"></div>
+  </div>
+
+  <div id="phase-screen">
+    <div class="phase-num" id="ps-num"></div>
+    <div class="phase-title-big" id="ps-title"></div>
+    <div class="phase-divider"></div>
+    <div class="phase-desc" id="ps-desc"></div>
+    <div class="war-stance-info" id="war-stance-info"></div>
+    <div class="phase-stats-recap" id="phase-stats-recap"></div>
+    <button class="next-btn" id="ps-btn" onclick="dismissPhaseScreen()">Beginnen</button>
+  </div>
+
+  <div id="event-card">
+    <div class="event-meta">
+      <span class="event-tag" id="ev-tag">Aufbau</span>
+      <span class="event-turn-lbl" id="ev-turn-lbl">Jahr 1</span>
+    </div>
+    <div class="event-title" id="ev-title"></div>
+    <div class="event-desc" id="ev-desc"></div>
+    <div class="choices-label">Ihre Entscheidung</div>
+    <div class="choices" id="choices"></div>
+  </div>
+
+  <div id="outcome-card">
+    <div class="outcome-header">Ergebnis Ihrer Entscheidung</div>
+    <div class="outcome-title" id="out-title"></div>
+    <div class="outcome-text" id="out-text"></div>
+    <div class="section-label">Direkte Auswirkungen</div>
+    <div class="delta-list" id="deltas"></div>
+    <div id="surprise-wrap"></div>
+    <button class="next-btn" id="next-btn" onclick="nextTurn()">Nächstes Monat</button>
+  </div>
+
+  <div id="gameover">
+    <div class="go-label" id="go-label">Ergebnis</div>
+    <div class="gameover-title" id="go-title"></div>
+    <div class="gameover-text" id="go-text"></div>
+    <div class="legacy-box" id="legacy-box"></div>
+    <div class="score-row" id="score-row"></div>
+    <div class="decision-log" id="decision-log"></div>
+    <div class="action-btns">
+      <button class="lb-btn" onclick="showLeaderboard(lastScore)">Rangliste ansehen</button>
+      <button class="restart-btn" onclick="backToSetup()">Neues Spiel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ LEADERBOARD ══════════ -->
+<div id="leaderboard-screen">
+  <div class="lb-header">
+    <div class="lb-title">Rangliste</div>
+    <div class="lb-sub">Alle Präsidenten — alle Länder</div>
+    <div class="lb-divider"></div>
+  </div>
+  <div id="lb-content"><div class="lb-loading">Rangliste wird geladen ...</div></div>
+  <button class="lb-back-btn" onclick="hideLeaderboard()">Zurück</button>
+</div>
+
+</div><!-- #game -->
+
+<script>
+// ══════════════════════════════════════════════════════
+// KONFIGURATION — EINFACHERE WERTE
+// ══════════════════════════════════════════════════════
+const PHASE_TURNS = [12, 10, 8];
+
+// Niedrigere Fail-Schwellen = schwieriger zu verlieren
+const FAIL = { zust:15, wirt:8, stab:12, frei:8, koal:10 };
+
+// Niedrigerer Verfall = einfacher
+const DECAY = { p1:1, p2:1, p3:1 };
+
+// Seltenere Krisen
+const CRISIS_PROB = { p1:.14, p2:.25, p3:.18 };
+
+const STATS  = ['zust','wirt','mil','dip','stab','frei','koal'];
+const LABELS = { zust:'Zustimmung', wirt:'Wirtschaft', mil:'Militär', dip:'Diplomatie', stab:'Stabilität', frei:'Freiheit', koal:'Koalition' };
+const COLORS = { zust:'#5b8dee', wirt:'#4caf7d', mil:'#e05252', dip:'#4cb8c4', stab:'#9b6ddf', frei:'#e0a84a', koal:'#e0844a' };
+
+// Hohere Startwerte = mehr Puffer
+const INIT = { zust:60, wirt:50, mil:40, dip:40, stab:80, frei:60, koal:70 };
+
+// ══════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════
+let G = {};
+let playerName = '';
+let countryName = '';
+let shuffled = {1:[],2:[],3:[]};
+let eIdx = {1:0,2:0,3:0};
+let warDecisionShown = false;
+let lastScore = null;
+
+function startGame() {
+  playerName  = document.getElementById('input-name').value.trim() || 'Präsident';
+  countryName = document.getElementById('input-country').value.trim() || 'Neuland';
+
+  document.getElementById('setup-screen').style.display = 'none';
+  document.getElementById('main-game').style.display = 'block';
+  document.getElementById('country-subtitle').textContent = countryName + ' — Republik';
+  document.getElementById('president-label').textContent = 'Präsident: ' + playerName;
+
+  initGame();
+}
+
+function backToSetup() {
+  document.getElementById('main-game').style.display = 'none';
+  document.getElementById('leaderboard-screen').style.display = 'none';
+  document.getElementById('setup-screen').style.display = 'block';
+}
+
+function initGame() {
+  G = { phase:0, turn:0, totalTurn:0, gameOver:false, warStance:null, phase1Focus:{}, lastCrisis:-1, log:[], stats:{...INIT} };
+  shuffled = {1:[],2:[],3:[]};
+  eIdx = {1:0,2:0,3:0};
+  warDecisionShown = false;
+  lastScore = null;
+  hideAll();
+  showPhaseScreen(1);
+  updateDisplay();
+}
+
+function clamp(v){ return Math.max(0, Math.min(100, v)); }
+
+function hideAll(){
+  ['event-card','outcome-card','crisis-card','phase-screen','gameover']
+    .forEach(id => { document.getElementById(id).style.display = 'none'; });
+}
+
+// ══════════════════════════════════════════════════════
+// PHASE SCREEN
+// ══════════════════════════════════════════════════════
+function showPhaseScreen(phase) {
+  G.phase = phase; G.turn = 0;
+  const meta = {
+    1:{ num:'Phase I — Aufbau', title:'Unabhängigkeit & Staatsaufbau',
+        desc:`Dein Land hat soeben die Unabhängigkeit erklärt. Als erster Präsident legen Sie die Grundlagen: Verfassung, Wirtschaft, Militär, Institutionen. Ihre reguläre Amtszeit umfasst 24 Monate — jede Entscheidung zählt doppelt. Die Koalition ist fragil, die Ressourcen sind knapp.` },
+    2:{ num:'Phase II — Der Krieg', title:'Der Grosse Krieg',
+        desc:`Im 25. Monat Ihrer Amtszeit bricht ein internationaler Konflikt aus. Das Parlament verlängert Ihre Amtszeit um 20 Monate. Sie müssen Stellung beziehen — es ist die wichtigste Entscheidung Ihrer Präsidentschaft.` },
+    3:{ num:'Phase III — Vermächtnis', title:'Konsequenzen & Erbe',
+        desc:`Nach 44 Monaten endet der Krieg. ${countryName} trägt tiefe Wunden. Ihre Amtszeit wird abermals verlängert — 16 weitere Monate, um das Land wieder aufzubauen. Was Sie jetzt tun, bestimmt Ihr Vermächtnis.` }
+  };
+  const m = meta[phase];
+  document.getElementById('ps-num').textContent = m.num;
+  document.getElementById('ps-title').textContent = m.title;
+  document.getElementById('ps-desc').textContent = m.desc;
+
+  const wsi = document.getElementById('war-stance-info');
+  if(phase === 3 && G.warStance){
+    const sl = {neutral:'Neutral geblieben', pro:'Pro-Kriegs-Koalition beigetreten', contra:'Gegen den Krieg positioniert'};
+    wsi.textContent = 'Ihre Kriegsentscheidung: ' + sl[G.warStance];
+    wsi.style.display = 'block';
+  } else { wsi.style.display = 'none'; }
+
+  const recap = document.getElementById('phase-stats-recap');
+  if(phase > 1){
+    recap.innerHTML = ['zust','wirt','stab','frei','koal'].map(k =>
+      `<div class="recap-item">${LABELS[k]} <span>${Math.round(G.stats[k])}</span></div>`).join('');
+  } else { recap.innerHTML = ''; }
+
+  const labels = {1:'Amtszeit beginnen', 2:'Kriegsphase beginnen', 3:'Letzte Amtszeit'};
+  document.getElementById('ps-btn').textContent = labels[phase];
+
+  const pb = document.getElementById('phase-badge');
+  pb.className = 'phase-badge ' + ['p1','p2','p3'][phase-1];
+  pb.textContent = ['I — Gründung','II — Krieg','III — Vermächtnis'][phase-1];
+
+  hideAll();
+  document.getElementById('phase-screen').style.display = 'block';
+  updateDisplay();
+}
+
+function dismissPhaseScreen(){
+  document.getElementById('phase-screen').style.display = 'none';
+  nextTurn();
+}
+
+// ══════════════════════════════════════════════════════
+// CORE LOOP
+// ══════════════════════════════════════════════════════
+function nextTurn(){
+  if(G.gameOver) return;
+  G.turn++; G.totalTurn++;
+  updateBadge(); updateProgress();
+  document.getElementById('outcome-card').style.display = 'none';
+  document.getElementById('crisis-card').style.display = 'none';
+
+  if(G.turn > 1){
+    const d = DECAY['p' + G.phase];
+    STATS.forEach(s => { G.stats[s] = clamp(G.stats[s] - d); });
+    if(G.stats.koal < 30){ G.stats.zust = clamp(G.stats.zust - 3); G.stats.wirt = clamp(G.stats.wirt - 2); }
+    if(G.stats.koal < 18){ G.stats.stab = clamp(G.stats.stab - 3); }
+  }
+
+  const prob = CRISIS_PROB['p' + G.phase];
+  if(G.turn > 1 && Math.random() < prob) triggerCrisis();
+
+  if(isGameOver()){ showGameOver(); return; }
+
+  if(G.turn > PHASE_TURNS[G.phase - 1]){
+    applyPhaseBonus();
+    if(G.phase < 3) showPhaseScreen(G.phase + 1);
+    else showVictory();
+    return;
+  }
+
+  showEvent(); updateDisplay();
+}
+
+function applyPhaseBonus(){
+  if(G.phase === 1){
+    Object.entries(G.phase1Focus).forEach(([s, c]) => {
+      if(c >= 3) G.stats[s] = clamp(G.stats[s] + 12);
+    });
+  }
+  // Kleiner Bonus beim Phasenwechsel für alle Stats
+  STATS.forEach(s => { G.stats[s] = clamp(G.stats[s] + 5); });
+}
+
+// ══════════════════════════════════════════════════════
+// EVENTS
+// ══════════════════════════════════════════════════════
+function getNextEvent(){
+  const p = G.phase;
+  if(p === 2 && !warDecisionShown){ warDecisionShown = true; return EVENTS[2][0]; }
+  const pool = EVENTS[p].filter(e => !e.isWar);
+  if(!shuffled[p].length){ shuffled[p] = [...pool].sort(() => Math.random() - .5); eIdx[p] = 0; }
+  const ev = shuffled[p][eIdx[p] % shuffled[p].length];
+  eIdx[p]++;
+  return ev;
+}
+
+function fill(str){ return (str||'').replace(/\[LAND\]/g, countryName); }
+
+function showEvent(){
+  const ev = getNextEvent();
+  document.getElementById('ev-tag').textContent = ev.tag;
+  document.getElementById('ev-tag').style.color = ev.col || 'var(--gold)';
+  document.getElementById('ev-title').textContent = fill(ev.title);
+  document.getElementById('ev-desc').textContent = fill(ev.desc);
+  document.getElementById('ev-turn-lbl').textContent = 'Monat ' + (G.totalTurn * 2) + ' — Phase ' + G.phase;
+  const cd = document.getElementById('choices'); cd.innerHTML = '';
+  ev.choices.forEach((c, i) => {
+    const b = document.createElement('button'); b.className = 'choice-btn';
+    b.innerHTML = `${fill(c.text)}<div class="effect-hint">${c.hint}</div>`;
+    b.onclick = () => choose(ev, i); cd.appendChild(b);
+  });
+  document.getElementById('event-card').style.display = 'block';
+}
+
+function choose(ev, i){
+  const c = ev.choices[i];
+  if(c.warStance) G.warStance = c.warStance;
+  document.querySelectorAll('.choice-btn').forEach((b, j) => { b.classList.toggle('selected', j === i); b.disabled = true; });
+  if(c.deltas) Object.entries(c.deltas).forEach(([k, v]) => { if(G.stats[k] !== undefined) G.stats[k] = clamp(G.stats[k] + v); });
+  if(G.phase === 1 && c.deltas){
+    const top = Object.entries(c.deltas).filter(([,v]) => v > 0).sort((a,b) => b[1]-a[1]);
+    if(top.length) G.phase1Focus[top[0][0]] = (G.phase1Focus[top[0][0]] || 0) + 1;
+  }
+  document.getElementById('out-title').textContent = fill(ev.title) + ' — Ergebnis';
+  document.getElementById('out-text').textContent = fill(c.outcome);
+  renderDeltas(document.getElementById('deltas'), c.deltas || {});
+  const sw = document.getElementById('surprise-wrap'); sw.innerHTML = '';
+  if(c.surp){
+    Object.entries(c.surp.deltas).forEach(([k, v]) => { if(G.stats[k] !== undefined) G.stats[k] = clamp(G.stats[k] + v); });
+    const box = document.createElement('div'); box.className = 'surprise-box';
+    const dl  = document.createElement('div'); dl.className = 'delta-list'; dl.style.marginTop = '7px';
+    renderDeltas(dl, c.surp.deltas);
+    box.innerHTML = `<strong>Unvorhergesehene Konsequenz:</strong> ${fill(c.surp.text)}`;
+    box.appendChild(dl); sw.appendChild(box);
+  }
+  const nb = document.getElementById('next-btn');
+  const isEnd = G.turn >= PHASE_TURNS[G.phase - 1];
+  if(isEnd && G.phase < 3)      nb.textContent = 'Nächste Phase';
+  else if(isEnd && G.phase === 3) nb.textContent = 'Vermächtnis sehen';
+  else                            nb.textContent = 'Weiter';
+  G.log.push({phase: G.phase, turn: G.turn, ev: fill(ev.title), choice: fill(c.text)});
+  updateDisplay();
+  document.getElementById('event-card').style.display = 'none';
+  document.getElementById('outcome-card').style.display = 'block';
+  const np = NEWS[G.phase];
+  document.getElementById('news-ticker').textContent = np[Math.floor(Math.random() * np.length)];
+}
+
+// ══════════════════════════════════════════════════════
+// CRISIS
+// ══════════════════════════════════════════════════════
+function triggerCrisis(){
+  const pool = CRISES[G.phase]; let idx; let t = 0;
+  do { idx = Math.floor(Math.random() * pool.length); t++; } while(idx === G.lastCrisis && t < 8);
+  G.lastCrisis = idx;
+  const c = pool[idx];
+  if(c.deltas) Object.entries(c.deltas).forEach(([k, v]) => { if(G.stats[k] !== undefined) G.stats[k] = clamp(G.stats[k] + v); });
+  document.getElementById('crisis-text').textContent = fill(c.text);
+  renderDeltas(document.getElementById('crisis-deltas'), c.deltas || {});
+  document.getElementById('crisis-card').style.display = 'block';
+}
+
+// ══════════════════════════════════════════════════════
+// DISPLAY
+// ══════════════════════════════════════════════════════
+function renderDeltas(container, deltas){
+  container.innerHTML = '';
+  Object.entries(deltas).forEach(([k, v]) => {
+    if(!LABELS[k] || v === 0) return;
+    const s = document.createElement('span');
+    s.className = 'delta ' + (v > 0 ? 'pos' : v < 0 ? 'neg' : 'neutral');
+    s.textContent = (v > 0 ? '+' : '') + v + '\u202f' + LABELS[k];
+    container.appendChild(s);
+  });
+}
+function updateBadge(){
+  document.getElementById('turn-badge').textContent = 'Monat ' + (G.totalTurn * 2) + ' von 60';
+}
+function updateProgress(){
+  const total = PHASE_TURNS.reduce((a, b) => a + b, 0);
+  document.getElementById('progress-fill').style.width = Math.round((G.totalTurn / total) * 100) + '%';
+}
+function updateDisplay(){
+  document.getElementById('stats-grid').innerHTML = STATS.map(s => {
+    const v = Math.round(G.stats[s]); const thr = FAIL[s]; const isDanger = thr && v < thr; const isWarn = v < 30;
+    return `<div class="stat ${isDanger ? 'danger' : isWarn ? 'warning' : ''}">
+      <div class="stat-label">${LABELS[s]}</div>
+      <div class="stat-val">${v}</div>
+      <div class="bar-wrap"><div class="bar-fill" style="width:${v}%;background:${isDanger ? '#e05252' : isWarn ? '#e0844a' : COLORS[s]}"></div></div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// SCORING
+// ══════════════════════════════════════════════════════
+function calcScore(survived){
+  // Freiheit und Zustimmung doppelt gewichtet (demokratische Kernwerte)
+  // Stabilität 1.5x, Militär 0.5x, Rest normal — Gesamtgewicht: 9.0
+  const W = {zust:2, wirt:1, mil:0.5, dip:1, stab:1.5, frei:2, koal:1};
+  const totalW = 9.0;
+  const weighted = Math.round(STATS.reduce((s, k) => s + G.stats[k] * W[k], 0) / totalW);
+  const phaseBonus = (G.phase - 1) * 10;
+  const survBonus = survived ? 20 : 0;
+  return Math.min(100, weighted + phaseBonus + survBonus);
+}
+
+function isGameOver(){ return Object.entries(FAIL).some(([k, v]) => G.stats[k] < v); }
+
+// ══════════════════════════════════════════════════════
+// END SCREENS
+// ══════════════════════════════════════════════════════
+function showGameOver(){
+  G.gameOver = true;
+  const fk = Object.keys(FAIL).find(k => G.stats[k] < FAIL[k]);
+  const reasons = {
+    zust: `Revolution! Die Bevölkerung von ${countryName} hat Sie gestürzt. Das Land versinkt im Chaos.`,
+    wirt: `Staatsbankrott! ${countryName}s Wirtschaft ist kollabiert. Der IWF übernimmt die Kontrolle.`,
+    stab: `Putsch! Das Militär hat die Macht übernommen. Die Demokratie ${countryName}s ist Geschichte.`,
+    frei: `Autoritarismus! ${countryName} ist keine Demokratie mehr. Die Welt wendet sich ab.`,
+    koal: `Koalitionsbruch! Ihre Regierung hat die Mehrheit verloren. Das Parlament stimmt Sie ab.`
+  };
+  document.getElementById('go-label').textContent = 'Gescheitert — Phase ' + G.phase + ' von 3';
+  document.getElementById('go-title').textContent = countryName + ' ist gefallen';
+  document.getElementById('go-text').textContent = (reasons[fk] || 'Eine unbekannte Krise hat Ihr Land zerstört.') + '\n\n' + G.totalTurn + ' Monate regiert.';
+  lastScore = calcScore(false);
+  buildEndScreen(false);
+  saveToLeaderboard(false);
+}
+
+function showVictory(){
+  G.gameOver = true;
+  const score = calcScore(true);
+  lastScore = score;
+  const r = [
+    {s:85, title:'Historische Präsidentschaft',    text:`Unter den schwersten Bedingungen wurde ${countryName} zu einer funktionierenden Demokratie. Die Geschichte wird Ihren Namen kennen.`},
+    {s:70, title:'Solide Führung',                  text:`Alle drei Phasen gemeistert. ${countryName} steht stabiler da als zu Beginn. Eine respektable Bilanz.`},
+    {s:55, title:'Hauchdünn bestanden',              text:`${countryName} hat überlebt — die Narben sind tief. Die Demokratie ist zerkratzt, aber noch vorhanden.`},
+    {s:40, title:'Pyrrhus-Sieg',                    text:`Technisch überstanden. Moralisch fraglich. ${countryName} ist gespalten, verarmt und misstrauisch.`},
+    {s:0,  title:'Scheitern im Überstand',          text:`${countryName} existiert noch — aber kaum als Demokratie. Das Vermächtnis dieser Präsidentschaft ist dunkel.`}
+  ].find(x => score >= x.s);
+  document.getElementById('go-label').textContent = 'Alle 3 Phasen abgeschlossen';
+  document.getElementById('go-title').textContent = r.title;
+  document.getElementById('go-text').textContent = r.text;
+  buildEndScreen(true);
+  saveToLeaderboard(true);
+}
+
+function buildEndScreen(survived){
+  const sl = {neutral:'Neutral geblieben', pro:'Pro-Kriegs-Koalition beigetreten', contra:'Gegen den Krieg positioniert'};
+  const lines = [];
+  if(G.warStance) lines.push('Kriegsentscheidung: ' + sl[G.warStance]);
+  if(G.stats.frei >= 68)  lines.push('Freiheit & Demokratie: vorbildlich gestärkt');
+  else if(G.stats.frei < 28) lines.push('Freiheit: stark eingeschränkt hinterlassen');
+  if(G.stats.wirt >= 62)  lines.push('Wirtschaft: florierend und stabil');
+  else if(G.stats.wirt < 22) lines.push('Wirtschaft: am Rande des Zusammenbruchs');
+  if(G.stats.koal >= 58)  lines.push('Koalition: stabil bis zum Schluss');
+  else if(G.stats.koal < 22) lines.push('Koalition: zerbrochen und handlungsunfähig');
+  if(G.stats.dip >= 58)   lines.push('Diplomatie: international anerkannte Führung');
+  lines.push((G.totalTurn * 2) + ' Monate regiert — Phase ' + G.phase + ' von 3 abgeschlossen');
+  lines.push('Gesamtpunktzahl: ' + lastScore + ' / 100');
+  document.getElementById('legacy-box').textContent = lines.join('\n');
+
+  document.getElementById('score-row').innerHTML = STATS.map(k => {
+    const v = Math.round(G.stats[k]);
+    return `<div class="score-item"><div class="score-num ${v >= 55 ? 'good' : v >= 30 ? 'ok' : 'bad'}">${v}</div><div class="score-lbl">${LABELS[k]}</div></div>`;
+  }).join('');
+
+  document.getElementById('decision-log').innerHTML = G.log.map(d =>
+    `<div class="log-item"><span class="log-phase p${d.phase}">P${d.phase}</span><span class="log-text"><strong>${d.ev}:</strong> ${d.choice}</span></div>`
+  ).join('');
+
+  hideAll();
+  document.getElementById('gameover').style.display = 'block';
+}
+
+// ══════════════════════════════════════════════════════
+// LEADERBOARD — FIREBASE SDK (CORS-sicher)
+// ══════════════════════════════════════════════════════
+// Firebase-Konfiguration
+const FB_CONFIG = {
+  databaseURL: 'https://demokratie-spiel-default-rtdb.europe-west1.firebasedatabase.app/'
+};
+
+// Firebase SDK initialisieren (compat mode, einmalig)
+let _fbApp = null, _fbDb = null;
+function getFirebase() {
+  if (_fbDb) return _fbDb;
+  if (!_fbApp) _fbApp = firebase.initializeApp(FB_CONFIG);
+  _fbDb = firebase.database();
+  return _fbDb;
+}
+
+async function saveToLeaderboard(survived) {
+  try {
+    const db = getFirebase();
+    // Spielername als Schlüssel (sanitiert) → ein Eintrag pro Spieler
+    const playerKey = playerName.trim().toLowerCase()
+      .replace(/[^a-z0-9äöüß]/gi, '_').substring(0, 40) || 'anonym';
+    const ref = db.ref('rangliste/' + playerKey);
+
+    // Vorhandenen Eintrag lesen
+    const snap = await ref.once('value');
+    const existing = snap.val();
+
+    // Nur speichern wenn kein Eintrag existiert ODER neuer Score besser ist
+    if (existing && existing.score >= lastScore) {
+      console.log('Bestehender Score (' + existing.score + ') ist besser oder gleich — kein Überschreiben.');
+      return;
+    }
+
+    await ref.set({
+      name:     playerName,
+      country:  countryName,
+      score:    lastScore,
+      phase:    G.phase,
+      survived: survived,
+      months:   G.totalTurn * 2,
+      date:     new Date().toLocaleDateString('de-AT', {day:'2-digit', month:'2-digit', year:'numeric'})
+    });
+    console.log('Neuer Bestselect gespeichert: ' + lastScore);
+  } catch(e) {
+    console.warn('Rangliste konnte nicht gespeichert werden:', e);
+  }
+}
+
+async function showLeaderboard(highlightScore) {
+  document.getElementById('setup-screen').style.display       = 'none';
+  document.getElementById('main-game').style.display          = 'none';
+  document.getElementById('leaderboard-screen').style.display = 'block';
+  document.getElementById('lb-content').innerHTML = '<div class="lb-loading">Rangliste wird geladen …</div>';
+
+  try {
+    const db      = getFirebase();
+    const snap    = await db.ref('rangliste').orderByChild('score').limitToLast(50).once('value');
+    const raw     = snap.val();
+
+    if (!raw) {
+      document.getElementById('lb-content').innerHTML =
+        '<div class="lb-empty">Noch keine Einträge. Spielen Sie das erste Spiel und hinterlassen Sie Ihr Vermächtnis.</div>';
+      return;
+    }
+
+    // Objekt → Array, absteigend nach Score
+    const entries = Object.values(raw).sort((a, b) => (b.score || 0) - (a.score || 0));
+
+    // Eigenen Eintrag hervorheben — letzten Treffer (neuester Versuch)
+    let myIdx = -1;
+    if (highlightScore !== null) {
+      for (let i = 0; i < entries.length; i++) {
+        if (entries[i].name === playerName && entries[i].score === highlightScore) {
+          myIdx = i; // kein break → letzter Treffer gewinnt
+        }
+      }
+    }
+
+    let html = `<table class="lb-table">
+      <thead><tr>
+        <th>#</th><th>Präsident</th><th>Land</th><th>Punkte</th><th>Phase</th><th>Datum</th>
+      </tr></thead><tbody>`;
+
+    entries.forEach((e, i) => {
+      const rank       = i + 1;
+      const rankCls    = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
+      const scoreCls   = e.score >= 70 ? 'good' : e.score >= 45 ? 'ok' : 'bad';
+      const isMe       = i === myIdx;
+      const newBadge   = isMe ? '<span class="new-entry-badge">NEU</span>' : '';
+      const phaseLabel = e.survived ? 'Alle 3 Phasen' : 'Phase ' + (e.phase || '?') + ' von 3';
+      const mLabel     = (e.months || e.years || '?') + ' Monate';
+      html += `<tr class="${isMe ? 'my-row' : ''} ${rank === 1 ? 'top1' : ''}">
+        <td><span class="lb-rank ${rankCls}">${rank}</span></td>
+        <td>
+          <div class="lb-name">${escHtml(e.name)}${newBadge}</div>
+          <div class="lb-country">${mLabel} regiert</div>
+        </td>
+        <td>${escHtml(e.country)}</td>
+        <td><span class="lb-score ${scoreCls}">${e.score}</span></td>
+        <td><span class="lb-phase">${phaseLabel}</span></td>
+        <td><span class="lb-date">${e.date || '—'}</span></td>
+      </tr>`;
+    });
+
+    html += '</tbody></table>';
+    document.getElementById('lb-content').innerHTML = html;
+
+  } catch(err) {
+    document.getElementById('lb-content').innerHTML =
+      '<div class="lb-empty">Rangliste konnte nicht geladen werden. Bitte versuchen Sie es erneut.</div>';
+    console.warn('Firebase Fehler:', err);
+  }
+}
+
+function hideLeaderboard(){
+  document.getElementById('leaderboard-screen').style.display = 'none';
+  if(G.gameOver){
+    document.getElementById('main-game').style.display = 'block';
+    document.getElementById('gameover').style.display = 'block';
+  } else {
+    document.getElementById('setup-screen').style.display = 'block';
+  }
+}
+
+function escHtml(s){
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ══════════════════════════════════════════════════════
+// NEWS
+// ══════════════════════════════════════════════════════
+const NEWS = {
+  1:['Opposition fordert Neuwahlen','Wirtschaftswachstum unter Erwartungen','Staatsgründung international anerkannt',
+     'Erste Parlamentswahl nähert sich','Infrastrukturprojekte im Verzug','Koalitionspartner verhandeln hitzig',
+     'Bevölkerung vertraut neuen Institutionen','Außenminister auf Antrittsreise',
+     'Umfrage: Mehrheit zufrieden mit Reformtempo','Verfassungsrechtler warnen vor Machtkonzentration'],
+  2:['Kriegsnachrichten dominieren alle Sender','[LAND]s Position international diskutiert',
+     'Flüchtlingszahlen steigen täglich','Militärbudget erreicht Rekordniveau',
+     'Friedensgespräche gescheitert — erneut','Söldner an der Grenze gemeldet',
+     'Koalition unter Kriegsdruck','Geheimdienst warnt vor Spionage',
+     'Internationale Presse: Position unklar','Energiepreise auf Rekordhoch durch Krieg'],
+  3:['Aufbauarbeiten beginnen langsam','Kriegsverbrechertribunal eröffnet',
+     'Internationale Investoren zögern','Demokratiebewegung wächst im Volk',
+     'Geschichte wird neu geschrieben','Koalition zeigt tiefe Risse',
+     '[LAND]s Zukunft steht auf dem Spiel','Wirtschaftsdaten geben Anlass zur Sorge',
+     'Versöhnungskommission tagt erstmals','Historiker: Diese Amtszeit wird Generationen prägen']
+};
+
+// ══════════════════════════════════════════════════════
+// EVENTS — PHASE 1
+// ══════════════════════════════════════════════════════
+const EVENTS = {
+1:[
+  { tag:'Aufbau', col:'var(--green)',
+    title:'Staatsgründung — wo beginnen?',
+    desc:'[LAND] startet mit einem leeren Staatshaushalt und vollen Erwartungen. Millionen Menschen blicken auf Ihre erste große Entscheidung als Präsident.',
+    choices:[
+      {text:'Industrieparks und Wirtschaftszone aufbauen', hint:'+14 Wirtschaft, −4 Stabilität',
+       outcome:'Fabriken entstehen. Erster Wohlstand wächst — langsam, aber solide.',
+       deltas:{wirt:14,stab:-4,koal:-3}},
+      {text:'Streitkräfte upgraden', hint:'+20 Militär, −5 Diplomatie',
+       outcome:'Die Armee steht. Nachbarn beobachten mit gemischten Gefühlen.',
+       deltas:{mil:20,dip:-5,koal:3}},
+      {text:'Handelsabkommen mit Nachbarstaaten schließen', hint:'+10 Diplomatie, +5 Wirtschaft',
+       outcome:'[LAND] ist offen für die Welt. Erste Investoren kommen.',
+       deltas:{dip:10,wirt:5,koal:5}},
+      {text:'Sozialprogramme und Grundversorgung', hint:'+12 Zustimmung, +5 Koalition',
+       outcome:'Bevölkerung spürt echte Verbesserungen. Vertrauen wächst.',
+       deltas:{zust:12,stab:4,koal:5}}
+    ]},
+  { tag:'Verfassung', col:'var(--gold)',
+    title:'Welches System soll [LAND] prägen?',
+    desc:'Eine Verfassungskommission legt drei Entwürfe vor. Ihre Wahl definiert die politische Identität des Landes für Jahrzehnte.',
+    choices:[
+      {text:'Liberale Demokratie — volle Gewaltenteilung', hint:'+15 Freiheit, −5 Stabilität',
+       outcome:'Verfassungsgericht, freie Presse, unabhängige Justiz. Einige Mächtige sind unzufrieden.',
+       deltas:{frei:15,zust:10,stab:-5,koal:8}},
+      {text:'Starke Exekutive mit Parlament', hint:'+10 Stabilität, −8 Freiheit',
+       outcome:'Effiziente Regierung — aber Opposition beklagt Machtkonzentration.',
+       deltas:{stab:10,frei:-8,zust:3,koal:-5}},
+      {text:'Konsensdemokratie — breite Koalitionen', hint:'+15 Koalition, +12 Stabilität',
+       outcome:'Alle haben Mitspracherecht. Langsam, aber stabil und fair.',
+       deltas:{stab:12,dip:5,zust:8,koal:15},
+       surp:{text:'Die breite Einigung bringt internationale Anerkennung.',deltas:{dip:8}}}
+    ]},
+  { tag:'Wirtschaft', col:'var(--green)',
+    title:'Rezession droht — erste große Entscheidung',
+    desc:'Die Wirtschaftsdaten von [LAND] zeigen besorgniserregende Trends. Der Haushalt ist bereits angespannt.',
+    choices:[
+      {text:'Schuldenfinanziertes Konjunkturpaket', hint:'+15 Wirtschaft kurzfristig',
+       outcome:'Wirtschaft erholt sich. Ratingagenturen beginnen zu zweifeln.',
+       deltas:{wirt:15,zust:8,koal:5},
+       surp:{text:'Kreditwürdigkeit von [LAND] herabgestuft. Zinsen steigen.',deltas:{wirt:-7}}},
+      {text:'Steuererhöhung für Konzerne', hint:'+5 Zustimmung, −10 Wirtschaft',
+       outcome:'Einnahmen steigen kurzfristig. Konzerne drohen mit Abwanderung.',
+       deltas:{zust:5,wirt:-10,koal:-8},
+       surp:{text:'Drei Großunternehmen verlegen Sitze ins Ausland.',deltas:{wirt:-8,zust:-6}}},
+      {text:'Strukturreformen — langfristig und schmerzhaft', hint:'+8 Wirtschaft nachhaltig',
+       outcome:'Schmerzhafter Wandel. Ergebnisse zeigen sich erst in Jahren.',
+       deltas:{wirt:8,zust:-5,stab:5,koal:-5}},
+      {text:'Auslandsinvestitionen anwerben', hint:'+12 Wirtschaft, +8 Diplomatie',
+       outcome:'Internationale Konzerne kommen. Wirtschaftliche Abhängigkeit wächst.',
+       deltas:{wirt:12,dip:8,frei:-4,koal:5}}
+    ]},
+  { tag:'Gesundheit', col:'var(--purple)',
+    title:'Gesundheitssystem — Aufbau oder Markt?',
+    desc:'Pflegekräfte streiken. [LAND]s Gesundheitssystem muss grundlegend neu aufgebaut werden.',
+    choices:[
+      {text:'Staatliches Universalsystem für alle', hint:'+18 Zustimmung, −18 Wirtschaft',
+       outcome:'Alle haben Zugang. Haushalt extrem belastet. Koalitionspartner erleichtert.',
+       deltas:{zust:18,wirt:-18,frei:5,koal:10}},
+      {text:'Mischmodell — Markt mit Grundversorgung', hint:'Ausgewogen, politisch vertretbar',
+       outcome:'Funktionierende Basis. Wohlhabendere bekommen bessere Versorgung.',
+       deltas:{zust:5,wirt:-8,frei:-3,koal:3}},
+      {text:'Privatisiert — Effizienz über Gleichheit', hint:'+12 Wirtschaft, −18 Zustimmung',
+       outcome:'Effizient für die, die zahlen können. Ärmere bleiben zurück.',
+       deltas:{wirt:12,zust:-18,frei:-12,koal:-12},
+       surp:{text:'Investigativmedien decken Ausbeutung auf. Situation eskaliert.',deltas:{zust:-6,frei:-4}}}
+    ]},
+  { tag:'Skandal', col:'var(--orange)',
+    title:'Staat überwacht Journalisten',
+    desc:'Eine Akte zeigt: Ein staatsunabhängiges Geheimdienst hat über fünf Jahre 340 Journalisten überwacht. Das Parlament ist entsetzt.',
+    choices:[
+      {text:'Vollständige Aufarbeitung — Chef entlassen', hint:'+18 Freiheit, −8 Militär',
+       outcome:'Chef entlassen. Kontrollgremien erweitert. International positiv aufgenommen.',
+       deltas:{frei:18,zust:13,dip:8,mil:-8},
+       surp:{text:'Enthüllung: Überwachung war Teil eines Partnerprogramms. Diplomatische Krise.',deltas:{dip:-8,stab:-5}}},
+      {text:'Selektive Transparenz — nur einzelne Fälle', hint:'Kontrollierter Schaden',
+       outcome:'Medien lassen nicht locker. Weitere Akten werden geleakt.',
+       deltas:{zust:-10,frei:-6,stab:-4}},
+      {text:'Praxis verteidigen — Sicherheit hat Vorrang', hint:'+5 Militär, −20 Freiheit',
+       outcome:'Sicherheitsbehörden nicht reformiert. EU leitet formales Verfahren ein.',
+       deltas:{mil:5,frei:-20,dip:-14,zust:-12}}
+    ]},
+  { tag:'Korruption', col:'#b45309',
+    title:'Korruption in der eigenen Partei',
+    desc:'Ein enger Verbündeter steht wegen Schmiergeldern unter Verdacht. Millionenzahlungen an Baukonzerne. Alle Medien warten auf Ihre Reaktion.',
+    choices:[
+      {text:'Untersuchungsausschuss — volle Transparenz', hint:'+18 Freiheit, −15 Koalition',
+       outcome:'Glaubwürdigkeit steigt. Koalition wackelt gefährlich.',
+       deltas:{frei:18,zust:14,stab:-12,koal:-14}},
+      {text:'Schweigen — interne Lösung', hint:'−18 Zustimmung, explosive Gefahr',
+       outcome:'Wochenlange Berichterstattung. Ihr Schweigen gilt als Mittäterschaft.',
+       deltas:{zust:-18,frei:-8,stab:-5,koal:-3},
+       surp:{text:'Weitere Querverbindungen direkt in Ihre Partei gefunden.',deltas:{zust:-8,frei:-4}}},
+      {text:'Verbündeten schützen — Koalition sichern', hint:'+8 Koalition, −15 Freiheit',
+       outcome:'Koalition überlebt. Sie werden dauerhaft mit dem Skandal verknüpft.',
+       deltas:{stab:8,frei:-15,zust:-8,koal:8}}
+    ]},
+  { tag:'Innenpolitik', col:'#d97706',
+    title:'Akten geleakt: Politiker in internationalen Netzwerken',
+    desc:'Internationale Ermittlungsakten belegen: Hunderte von prominente Personen sowohl international als auch in [LAND]. Sie unterhielten Kontakte zu einem globalen Netzwerk, das der Ausbeutung von Minderjährigen verdächtigt wird.',
+    choices:[
+      {text:'Sofortige Suspendierung — null Toleranz', hint:'+18 Zustimmung, −18 Koalition',
+       outcome:'Zwei Minister suspendiert. Ermittlungen eingeleitet. Beliebtheit steigt.',
+       deltas:{zust:18,frei:14,koal:-18,stab:-8}},
+      {text:'Untersuchungsausschuss — kein Vorverurteilung', hint:'Rechtsstaatlich korrekt',
+       outcome:'Ausschuss arbeitet monatelang. Zwei Rücktritte, ein Freispruch.',
+       deltas:{frei:9,zust:4,stab:-5,koal:-7}},
+      {text:'Schweigen und intern lösen', hint:'Explosive Gefahr',
+       outcome:'Weitere Leaks folgen wöchentlich. Ihre Regierung wird mit dem Skandal assoziiert.',
+       deltas:{zust:-18,frei:-14,stab:-9},
+       surp:{text:'Investigativjournalisten veröffentlichen weitere Namen aus [LAND]. Massenproteste.',deltas:{zust:-11,koal:-10}}}
+    ]},
+  { tag:'Aussenpolitik', col:'var(--cyan)',
+    title:'Wichtige Meeresstraße blockiert — [LAND]s Handel steht still',
+    desc:'Eine internationale Blockade der Schifffahrtsroute stoppt 40% von [LAND]s Exporten. Der Schaden wächst täglich.',
+    choices:[
+      {text:'Diplomatische Lösung — multilateraler Druck', hint:'Langsam, kein Risiko',
+       outcome:'Nach sechs Wochen wird die Blockade gelockert. Wirtschaft leidet sichtbar.',
+       deltas:{dip:14,wirt:-8,zust:-3}},
+      {text:'Marine entsenden — Blockade brechen', hint:'Riskant — könnte eskalieren',
+       outcome:'Marine trifft auf Widerstand. Internationale Kritik.',
+       deltas:{mil:8,dip:-12,stab:-8,wirt:-5},
+       surp:{text:'Zwischenfall auf See. Internationale Untersuchung gefordert.',deltas:{dip:-8,zust:-6}}},
+      {text:'Handelsumleitungen — alternative Routen', hint:'Teuer, aber konfliktfrei',
+       outcome:'Wirtschaft passt sich an. Neue Handelsrouten erschlossen.',
+       deltas:{wirt:-4,stab:5,dip:6}}
+    ]},
+  { tag:'Sicherheit', col:'#dc2626',
+    title:'Terrorwarnung — Stufe Kritisch',
+    desc:'Geheimdienste: konkreter Anschlagsplan auf [LAND]s Hauptstadt, 48 Stunden. Das Kabinett trifft sich um 03:00 Uhr.',
+    choices:[
+      {text:'Notstandsdekret: Massenüberwachung sofort', hint:'Wirksam — verfassungsrechtlich fragwürdig',
+       outcome:'Anschlag vereitelt. Verfassungsgericht leitet Prüfverfahren ein.',
+       deltas:{zust:10,stab:20,frei:-22,koal:-8},
+       surp:{text:'Gericht erklärt Teile des Dekrets für unsinnig. Erzwungene Rücknahme.',deltas:{stab:-7,zust:-4}}},
+      {text:'Gezielte Maßnahmen mit richterlicher Kontrolle', hint:'Rechtsstaatlich sauber',
+       outcome:'Behörden arbeiten fieberhaft. Kleinerer Anschlag nicht verhindert.',
+       deltas:{zust:-12,stab:5,frei:-5,koal:3}},
+      {text:'Bestehende Gesetze — keine Sondermaßnahmen', hint:'Keine Einschränkungen',
+       outcome:'Kein Anschlag. Ob das an Ihrer Strategie lag, bleibt unklar.',
+       deltas:{zust:-4,stab:-4,frei:12,koal:3}}
+    ]},
+  { tag:'Digitalisierung', col:'var(--purple)',
+    title:'KI vernichtet 200.000 Arbeitsplätze',
+    desc:'Automatisierungswelle trifft [LAND]s Industrie. Tech-Konzerne blockieren jede Regulierung. Gewerkschaften streiken.',
+    choices:[
+      {text:'Strenges KI-Regulierungsgesetz', hint:'+5 Zustimmung, −14 Wirtschaft',
+       outcome:'Tech-Branche droht mit Abwanderung. Kurzfristig stabile Jobs.',
+       deltas:{zust:5,wirt:-14,frei:-8,koal:5},
+       surp:{text:'Drei Technologiekonzerne verlassen [LAND]. 60.000 Jobs weg.',deltas:{wirt:-8,zust:-6}}},
+      {text:'Umschulung und bedingungsloses Grundeinkommen', hint:'+10 Zustimmung, −18 Wirtschaft',
+       outcome:'Gesellschaftlich breite Zustimmung. Kosten explodieren.',
+       deltas:{zust:10,wirt:-18,frei:10,koal:-3}},
+      {text:'Freie KI-Entwicklung — Markt regelt sich', hint:'+15 Wirtschaft, −15 Zustimmung',
+       outcome:'Investitionen steigen. Soziale Ungleichheit explodiert.',
+       deltas:{zust:-15,wirt:15,frei:5,koal:-10}}
+    ]},
+  { tag:'Demokratie', col:'#dc2626',
+    title:'Rechtspopulismus überholt [LAND]s Regierung',
+    desc:'Eine neue Partei führt mit verfassungsrechtlich fragwürdigen Versprechen. Handeln Sie jetzt.',
+    choices:[
+      {text:'Klare Abgrenzung und sachliche Kritik', hint:'Prinzipientreu — verliert Wähler',
+       outcome:'Weitere Wähler wandern ab. Presse lobt Ihre Haltung.',
+       deltas:{zust:-12,frei:15,koal:5}},
+      {text:'Populistische Themen adaptieren', hint:'Wahltaktisch effektiv — moralisch fragwürdig',
+       outcome:'Sie stoppen den Zulauf. Der politische Diskurs verschiebt sich nach rechts.',
+       deltas:{zust:8,stab:5,frei:-18,koal:-5}},
+      {text:'Große Koalition mit bisherigen Gegnern', hint:'Regierungsstabilität',
+       outcome:'Regierung stabilisiert sich. Stammwähler fühlen sich verraten.',
+       deltas:{zust:-8,wirt:3,stab:3,koal:22}}
+    ]},
+  { tag:'Rechtsstaat', col:'#b45309',
+    title:'Verfassungsgericht kippt zentrales Regierungsgesetz',
+    desc:'Das Verfassungsgericht erklärt Ihre Kernreform für verfassungswidrig. Ein Koalitionspartner fordert Reform des Gerichts selbst.',
+    choices:[
+      {text:'Entscheidung vorbehaltlos akzeptieren', hint:'Einzig rechtsstaatliche Option',
+       outcome:'Koalitionspartner verlässt Regierung. Minderheitsregierung.',
+       deltas:{zust:8,frei:15,koal:-26}},
+      {text:'Gericht durch Parlamentsmehrheit umbauen', hint:'Machtpolitisch effektiv — demokratisch gefährlich',
+       outcome:'Internationaler Aufschrei. EU startet Rechtsstaatsverfahren.',
+       deltas:{zust:-20,wirt:-8,stab:5,frei:-26,koal:-5},
+       surp:{text:'Drei Richter treten aus Protest zurück. Verfassungskrise eskaliert.',deltas:{frei:-8,dip:-8}}},
+      {text:'Abgeschwächtes Kompromissgesetz', hint:'Koalition +5',
+       outcome:'Verfassungsrechtler kritisieren scharf. Niemand ist zufrieden.',
+       deltas:{zust:-5,frei:-8,koal:5}}
+    ]},
+  { tag:'Klima', col:'#059669',
+    title:'Jahrhundertflut trifft [LAND]',
+    desc:'Drei Regionen unter Wasser. Schäden übersteigen den gesamten Katastrophenfonds. [LAND] hat kein Klimagesetz.',
+    choices:[
+      {text:'Nationaler Klimanotstand — Sofortprogramm', hint:'+12 Zustimmung, −18 Wirtschaft',
+       outcome:'Bevölkerung dankbar. Haushalt dauerhaft strapaziert.',
+       deltas:{zust:12,wirt:-18,stab:5,koal:5,dip:8}},
+      {text:'Privatversicherungen tragen Hauptlast', hint:'Günstig — sozial brutal',
+       outcome:'Reiche erholen sich, ärmere Regionen bleiben beschädigt.',
+       deltas:{zust:-9,wirt:-3,koal:-5},
+       surp:{text:'Betroffene Regionen veröden dauerhaft.',deltas:{wirt:-5,zust:-5}}},
+      {text:'EU-Hilfsfonds beantragen — abwarten', hint:'Langsam, bürokratisch',
+       outcome:'Genehmigung dauert Monate. Betroffene warten.',
+       deltas:{zust:-12,wirt:-4,dip:5}}
+    ]},
+  { tag:'Energie', col:'var(--cyan)',
+    title:'[LAND] ist zu 55% von fossilen Importen abhängig',
+    desc:'Ein Nachbarland droht, Energielieferungen einzustellen. Die Energiepolitik für die nächsten Jahrzehnte muss entschieden werden.',
+    choices:[
+      {text:'Massiver Ausbau Erneuerbarer', hint:'Zukunftssicher — teuer',
+       outcome:'Massives Investitionsprogramm. Abhängigkeit sinkt langfristig.',
+       deltas:{wirt:-12,stab:8,frei:6,dip:8,zust:-5}},
+      {text:'Atomenergie als Brücke', hint:'Verlässlich — politisch polarisierend',
+       outcome:'Reaktoren geplant. Grüne Koalitionspartner drohen mit Austritt.',
+       deltas:{wirt:-7,stab:10,frei:-5,koal:-10}},
+      {text:'Fracking und eigene Fossilquellen', hint:'Kurzfristig unabhängig — Umweltkosten massiv',
+       outcome:'Kurze Unabhängigkeit. Massive Umweltproteste.',
+       deltas:{wirt:8,frei:-12,dip:-10,stab:-5,zust:-8}}
+    ]},
+  { tag:'Soziales', col:'var(--purple)',
+    title:'Rentensystem vor dem Kollaps',
+    desc:'Berechnungen zeigen: [LAND]s Rentensystem wird in zwölf Jahren zahlungsunfähig. Rentner sind 31% der Wählerschaft.',
+    choices:[
+      {text:'Renteneintrittsalter auf 70 anheben', hint:'Haushalt gesichert — massive Proteste',
+       outcome:'Gewerkschaften rufen zum Generalstreik. Haushalt langfristig stabil.',
+       deltas:{wirt:10,zust:-18,stab:-10,koal:-12}},
+      {text:'Kapitalgedecktes Zusatzsystem', hint:'Langfristig sinnvoll, kurzfristig wirkungslos',
+       outcome:'Reform verabschiedet. Effekte zeigen sich erst in 20 Jahren.',
+       deltas:{wirt:4,stab:3,zust:-4,koal:2}},
+      {text:'Einwanderung erhöhen', hint:'Demographisch logisch — politisch umstritten',
+       outcome:'Einwanderung steigt. Wirtschaft profitiert langfristig.',
+       deltas:{wirt:8,zust:-7,stab:-5,dip:5}}
+    ]}
+],
+
+// ══════════════════════════════════════════════════════
+// EVENTS — PHASE 2
+// ══════════════════════════════════════════════════════
+2:[
+  { tag:'KRIEGSENTSCHEIDUNG', col:'var(--red)', isWar:true,
+    title:'Der Krieg beginnt',
+    desc:'Um 03:14 Uhr: Ein Nachbarland wird angegriffen. Der Konflikt eskaliert. Bomben fallen. Flüchtlingsströme verstopfen [LAND]s Grenzen. Das Parlament hat Ihre Amtszeit verlängert und verlangt eine klare Positionierung.\n\nDies ist Ihre wichtigste Entscheidung als Präsident.',
+    choices:[
+      {text:'Neutral bleiben — [LAND] bleibt aus dem Krieg heraus', hint:'+20 Diplomatie, −15 Militär',
+       outcome:'[LAND] erklärt formale Neutralität. Beide Kriegsparteien enttäuscht.',
+       deltas:{dip:20,mil:-15,zust:-5,koal:5}, warStance:'neutral'},
+      {text:'Der angegriffenen Seite beitreten', hint:'+28 Militär, −25 Zustimmung',
+       outcome:'[LAND]s Armee mobilisiert. Bevölkerung ist tief gespalten.',
+       deltas:{mil:28,zust:-22,dip:-16,frei:-10,koal:-10}, warStance:'pro'},
+      {text:'Aktiver Widerstand — Friedenskoalition anführen', hint:'+22 Diplomatie, +10 Zustimmung',
+       outcome:'[LAND] organisiert Friedensinitiative. Diplomatisch stark.',
+       deltas:{dip:22,zust:10,mil:-12,frei:12,koal:8}, warStance:'contra'}
+    ]},
+  { tag:'Krieg · Flüchtlinge', col:'var(--red)',
+    title:'200.000 Kriegsgeflüchtete an [LAND]s Grenze',
+    desc:'Binnen einer Woche drangen 200.000 Menschen an [LAND]s Grenze. Das Integrationssystem ist nicht vorbereitet.',
+    choices:[
+      {text:'Grenzen öffnen — humanitäre Pflicht', hint:'+15 Freiheit, −15 Wirtschaft',
+       outcome:'[LAND] nimmt alle auf. International gelobt. Soziale Spannungen steigen.',
+       deltas:{frei:15,wirt:-15,stab:-10,koal:-8}},
+      {text:'Kontingent mit Registrierungslagern', hint:'Verwaltbar — humanitär fragwürdig',
+       outcome:'Bilder aus Lagern gehen durch Medien.',
+       deltas:{zust:-5,wirt:-5,stab:4,frei:-7,koal:3}},
+      {text:'Grenzschließung — [LAND] zuerst', hint:'+10 Zustimmung kurzfristig',
+       outcome:'EU leitet Vertragsverletzungsverfahren ein.',
+       deltas:{zust:10,dip:-18,frei:-12,koal:5},
+       surp:{text:'EU verhängt Fördermittelstopp. Infrastrukturprojekte gestoppt.',deltas:{wirt:-10}}}
+    ]},
+  { tag:'Krieg - Propaganda', col:'var(--red)',
+    title:'Informationskrieg — [LAND] im Visier',
+    desc:'Beide Kriegsparteien betreiben Desinformationskampagnen in [LAND]. Gesellschaft beginnt sich zu radikalisieren.',
+    choices:[
+      {text:'Staatliche Transparenzkampagne', hint:'+10 Stabilität, −10 Freiheit',
+       outcome:'Kampagne hilft teilweise.',
+       deltas:{stab:10,frei:-10,zust:5,koal:5}},
+      {text:'Externe Plattformen regulieren', hint:'Wirksam — demokratisch bedenklich',
+       outcome:'Löschungen beginnen. Freiheit leidet.',
+       deltas:{stab:7,frei:-12,dip:-5},
+       surp:{text:'Internationale Pressefreiheitsorganisationen setzen [LAND] auf rote Liste.',deltas:{dip:-7,zust:-4}}},
+      {text:'Medienfreiheit verteidigen', hint:'Desinformation floriert',
+       outcome:'Freiheit bleibt intakt. Radikalisierung schreitet fort.',
+       deltas:{frei:12,stab:-8,zust:-6}}
+    ]},
+  { tag:'Krieg - Wirtschaft', col:'var(--red)',
+    title:'Energiekrise durch Krieg',
+    desc:'[LAND] verliert 60% seiner Energieimporte über Nacht. Fabriken schließen. 48 Stunden für eine Entscheidung.',
+    choices:[
+      {text:'Rationierung und Preiskontrolle', hint:'Gerecht — Wirtschaft leidet',
+       outcome:'Rationierung vermeidet schlimmste Prognosen.',
+       deltas:{wirt:-12,stab:7,zust:-4,frei:-6}},
+      {text:'Notfall-Importverträge zu Höchstpreisen', hint:'Versorgung gesichert — teuer',
+       outcome:'Energie bleibt verfügbar. Staatsverschuldung steigt.',
+       deltas:{wirt:-15,stab:10,zust:4},
+       surp:{text:'Kreditlimit erreicht. IWF-Notprogramm erforderlich.',deltas:{wirt:-8,frei:-4}}},
+      {text:'Beschleunigter Ausbau erneuerbarer Energien', hint:'Strukturell richtig — zu langsam',
+       outcome:'Mittelfristig unabhängiger. Kurzfristig: Blackouts.',
+       deltas:{wirt:-9,stab:-4,dip:7,frei:5}}
+    ]},
+  { tag:'Militär', col:'var(--red)',
+    title:'Verbündeter fordert Truppen von [LAND]',
+    desc:'Ein Partner verlangt direkte Unterstützung. Das Parlament ist gespalten. 61% der Bevölkerung lehnen Entsendung ab.',
+    choices:[
+      {text:'Truppen und Rüstung senden', hint:'Bündnistreue — Bevölkerung gespalten',
+       outcome:'Partner dankt. Im Inland massive Proteste.',
+       deltas:{dip:8,mil:5,zust:-18,koal:-14,wirt:-10}},
+      {text:'Finanzielle Unterstützung — keine Truppen', hint:'Kompromiss',
+       outcome:'Partner enttäuscht. Im Inland Erleichterung.',
+       deltas:{dip:-3,wirt:-12,zust:-4,stab:3}},
+      {text:'Humanitäre Einheiten — kein Kampfeinsatz', hint:'Signal der Solidarität',
+       outcome:'Partner akzeptiert. International gelobt.',
+       deltas:{dip:10,zust:5,mil:-3,wirt:-5}}
+    ]},
+  { tag:'Krieg - Recht', col:'var(--orange)',
+    title:'Kriegsverbrechen — Was wissen wir?',
+    desc:'Geheimdienste berichten von systematischen Kriegsverbrechen. Der Internationale Strafgerichtshof bittet [LAND] um Kooperation.',
+    choices:[
+      {text:'Vollständige Kooperation mit ICC', hint:'+18 Freiheit, −12 Diplomatie',
+       outcome:'[LAND] steht für Recht — diplomatisch riskant, moralisch klar.',
+       deltas:{frei:18,dip:-10,zust:10,koal:3}},
+      {text:'Selektive Zusammenarbeit', hint:'Kompromiss',
+       outcome:'Niemand ist zufrieden.',
+       deltas:{dip:-7,frei:-7,zust:-4,koal:-4}},
+      {text:'Staatssouveränität — keine Einmischung', hint:'+5 Stabilität, −25 Freiheit',
+       outcome:'[LAND] schützt Verbündete auf Kosten der eigenen Werte.',
+       deltas:{stab:5,frei:-22,dip:-14,koal:-3}}
+    ]},
+  { tag:'Diplomatie', col:'var(--cyan)',
+    title:'Geheimgespräche — Friedensdeal möglich',
+    desc:'Ihre Diplomaten: Beide Kriegsparteien sind bereit für Gespräche. [LAND] kann als Vermittler auftreten.',
+    choices:[
+      {text:'Geheimvermittlung übernehmen', hint:'+22 Diplomatie, +12 Zustimmung',
+       outcome:'Waffenstillstand für 30 Tage vereinbart. Historisches Ergebnis.',
+       deltas:{dip:22,zust:12,stab:8,frei:6},
+       surp:{text:'Eine Kriegspartei verlässt den Tisch. Offensive beginnt neu.',deltas:{dip:-10,stab:-7}}},
+      {text:'Öffentlich und offiziell vermitteln', hint:'Glaubwürdig — weniger flexibel',
+       outcome:'Verhandlungen scheitern nach drei Runden an offiziellen Positionen.',
+       deltas:{dip:12,zust:8,stab:3}},
+      {text:'Nicht einmischen', hint:'Sicher — Chance verpasst',
+       outcome:'Andere Nation übernimmt. [LAND] verliert Einfluss.',
+       deltas:{dip:-7,zust:-3}}
+    ]},
+  { tag:'Krieg · Sanktionen', col:'var(--red)',
+    title:'Verbündete fordern Wirtschaftssanktionen',
+    desc:'Westliche Partner fordern, dass [LAND] sich den Sanktionen gegen die Aggressormacht anschließt. Kosten: 8 Milliarden.',
+    choices:[
+      {text:'Sanktionen vollständig mitmachen', hint:'Solidarität — hohe Wirtschaftskosten',
+       outcome:'Aggressormacht verhängt Gegensanktionen. 8 Milliarden Verlust.',
+       deltas:{dip:14,wirt:-16,zust:-5}},
+      {text:'Teilsanktionen — sensible Sektoren ausgenommen', hint:'Pragmatisch',
+       outcome:'Partner enttäuscht. Aggressormacht reagiert moderat.',
+       deltas:{dip:-4,wirt:-6,stab:4}},
+      {text:'Nicht mitmachen — eigene Interessen', hint:'Wirtschaftlich — diplomatisch ruinös',
+       outcome:'Westliche Partner wütend. [LAND] aus Koordinationstreffen ausgeladen.',
+       deltas:{wirt:8,dip:-18,koal:-8,frei:-5}}
+    ]},
+  { tag:'Kriegsgesellschaft', col:'#6b7280',
+    title:'Kriegsmüde Gesellschaft — Moral bricht ein',
+    desc:'Nach zwei Jahren Krieg: Umfragen zeigen historischen Tiefstand der Unterstützung. Suizidrate bei Veteranen verdreifacht.',
+    choices:[
+      {text:'Sofortiges nationales Trauma-Programm', hint:'Teuer, gesellschaftlich wichtig',
+       outcome:'Soforthilfe wird aufgebaut. Kosten erheblich.',
+       deltas:{zust:12,wirt:-11,stab:8,frei:6}},
+      {text:'Staatliche Kampagne für Durchhaltewillen', hint:'Kurzfristig wirksam',
+       outcome:'Moral stabilisiert sich vorläufig. Realitätsverlust wächst.',
+       deltas:{zust:6,stab:5,frei:-10}},
+      {text:'Kriegsende fordern — Ausstieg', hint:'Mutig — Bündnisse belastet',
+       outcome:'[LAND] fordert Waffenstillstand. Bevölkerung erleichtert.',
+       deltas:{zust:14,dip:-13,mil:-8,stab:4}}
+    ]},
+  { tag:'Kriegsrecht', col:'var(--red)',
+    title:'Notstandsgesetze — wie weit darf der Staat gehen?',
+    desc:'Regierung will Notstandsbefugnisse: Versammlungsverbot, erweiterte Überwachung. 48 zu 52 Prozent der Bevölkerung dagegen.',
+    choices:[
+      {text:'Notstandsgesetze in vollem Umfang', hint:'Kontrolle — Freiheit stark eingeschränkt',
+       outcome:'EU leitet Rechtsstaatsverfahren ein.',
+       deltas:{stab:14,frei:-22,dip:-12,zust:-8}},
+      {text:'Eingeschränkte Befugnisse mit Parlamentskontrolle', hint:'Ausgewogen',
+       outcome:'Parlament genehmigt. Verfassungsrechtler zufrieden.',
+       deltas:{stab:8,frei:-8,zust:-3,koal:3}},
+      {text:'Keine Notstandsgesetze', hint:'Demokratisch korrekt',
+       outcome:'Sicherheitsbehörden frustriert. Freiheit bleibt intakt.',
+       deltas:{frei:14,stab:-7,zust:6}}
+    ]},
+  { tag:'Koalition', col:'var(--orange)',
+    title:'Koalition bricht — Misstrauensvotum mitten im Krieg',
+    desc:'Ein Koalitionspartner stellt Misstrauensantrag. Mehrheiten sind knapp. Neuwahlen würden alles destabilisieren.',
+    choices:[
+      {text:'Vertrauen beantragen — neu verhandeln', hint:'Demokratisch. Ergebnis offen.',
+       outcome:'Knappe Mehrheit hält. Konzessionen notwendig.',
+       deltas:{stab:-5,koal:8,zust:4}},
+      {text:'Koalitionspartner durch Zugeständnisse binden', hint:'Teuer — stabil',
+       outcome:'Misstrauensantrag zurückgezogen. Politischer Preis hoch.',
+       deltas:{koal:14,stab:5,zust:-5,frei:-5}},
+      {text:'Neuwahlen — Volk soll entscheiden', hint:'Mutig — destabilisierend',
+       outcome:'Wahlkampf mitten im Krieg. Bevölkerung verunsichert.',
+       deltas:{frei:10,stab:-11,zust:-4,koal:-8}}
+    ]},
+  { tag:'Krieg · Presse', col:'var(--red)',
+    title:'Kriegsjournalist verhaftet',
+    desc:'Ein Journalist aus [LAND] wurde an der Front verhaftet. Presseverband fordert sofortige Freilassung.',
+    choices:[
+      {text:'Alle diplomatischen Mittel einsetzen', hint:'Konsequent und riskant',
+       outcome:'Nach drei Wochen Journalist freigelassen.',
+       deltas:{frei:14,dip:-6,zust:9}},
+      {text:'Stille Verhandlungen', hint:'Diskret — Presse frustriert',
+       outcome:'Journalist nach sechs Wochen frei.',
+       deltas:{frei:6,dip:4,zust:-4}},
+      {text:'Journalist als Spion einstufen', hint:'Diplomatisch pragmatisch — moralisch inakzeptabel',
+       outcome:'Gegenseite hält Journalist fest. [LAND] auf Pressefreiheitsliste.',
+       deltas:{frei:-18,dip:-11,zust:-12}}
+    ]}
+],
+
+// ══════════════════════════════════════════════════════
+// EVENTS — PHASE 3  (10 Events für 8 Runden → zufällige Auswahl)
+// ══════════════════════════════════════════════════════
+3:[
+  { tag:'Vermächtnis', col:'var(--purple)',
+    title:'Welches [LAND] hinterlassen Sie?',
+    desc:'Die Nachkriegszeit hat begonnen. [LAND] trägt tiefe Wunden. Die wichtigste Entscheidung: Welches [LAND] hinterlassen Sie?',
+    choices:[
+      {text:'Demokratische Institutionen massiv stärken', hint:'+20 Freiheit, +10 Koalition',
+       outcome:'Verfassungsreformen, unabhängige Justiz. Das Erbe steht.',
+       deltas:{frei:20,zust:10,stab:8,dip:5,koal:10}},
+      {text:'Exekutivmacht ausbauen', hint:'+20 Stabilität, −25 Freiheit',
+       outcome:'Effizient — aber auf Kosten demokratischer Werte.',
+       deltas:{stab:20,frei:-25,zust:-10,koal:-8},
+       surp:{text:'EU mahnt. Oppositionsparteien klagen vor Verfassungsgericht.',deltas:{dip:-8,frei:-7}}},
+      {text:'Versöhnungskommission einsetzen', hint:'+15 Zustimmung, +12 Diplomatie',
+       outcome:'Aufarbeitung schmerzt — heilt aber tiefe Wunden.',
+       deltas:{zust:15,dip:12,frei:10,stab:5,koal:12}}
+    ]},
+  { tag:'Wiederaufbau', col:'var(--green)',
+    title:'Wirtschaftlicher Neustart nach dem Krieg',
+    desc:'Die Kriegsfolgen haben [LAND]s Wirtschaft erschüttert. Drei verschiedene Finanzierungsmodelle liegen vor.',
+    choices:[
+      {text:'Internationaler Marshallplan beantragen', hint:'+20 Wirtschaft, −8 Freiheit',
+       outcome:'Mittel fließen — ausländische Bedingungen prägen die Politik.',
+       deltas:{wirt:20,dip:10,frei:-8,koal:5}},
+      {text:'Eigenständiger Aufbau — selbst finanziert', hint:'+12 Wirtschaft, +10 Stabilität',
+       outcome:'[LAND] steht auf eigenen Beinen. Langsam, aber würdevoll.',
+       deltas:{wirt:12,stab:10,zust:6,koal:8}},
+      {text:'Privatisierungswelle', hint:'+18 Wirtschaft, −15 Freiheit',
+       outcome:'Schnelles Wachstum. Staatsvermögen wandert zu Oligarchen.',
+       deltas:{wirt:18,frei:-15,zust:-10,koal:-10},
+       surp:{text:'Korruption explodiert. Oligarchen kontrollieren Schlüsselindustrien.',deltas:{stab:-9,frei:-7}}}
+    ]},
+  { tag:'Aufarbeitung', col:'var(--orange)',
+    title:'Kriegsschuld & Aufarbeitung',
+    desc:'Ein internationales Tribunal untersucht Kriegsverbrechen. [LAND]s Entscheidungen in Phase II stehen unter Beobachtung.',
+    choices:[
+      {text:'Volle Aufarbeitung — Wahrheitskommission', hint:'+18 Freiheit, −10 Stabilität',
+       outcome:'Schmerzhaft aber notwendig. Internationale Anerkennung steigt.',
+       deltas:{frei:18,dip:15,zust:8,stab:-10,koal:5}},
+      {text:'Amnesie — vorwärts blicken', hint:'+8 Stabilität, −20 Freiheit',
+       outcome:'Wunden bleiben unbehandelt. Gesellschaft bleibt gespalten.',
+       deltas:{stab:8,frei:-20,zust:-8,koal:-8}},
+      {text:'Selektive Erinnerungskultur', hint:'Kompromiss — symbolisch',
+       outcome:'Denkmäler ohne echte Konsequenzen fur die Verantwortlichen.',
+       deltas:{frei:5,dip:5,zust:3,koal:3}}
+    ]},
+  { tag:'Weltordnung', col:'var(--cyan)',
+    title:'[LAND]s Platz in der neuen Weltordnung',
+    desc:'Der Krieg hat die internationale Ordnung neu geformt. Grosse Allianzen werben um [LAND].',
+    choices:[
+      {text:'Westliche Allianz — NATO-ähnlich', hint:'+15 Militär, +10 Diplomatie',
+       outcome:'Sicherheitsgarantien — [LAND] ist Teil des Westens.',
+       deltas:{mil:15,dip:10,stab:8,frei:-8,koal:10}},
+      {text:'Blockfreie Bewegung — eigener Weg', hint:'+12 Diplomatie, −8 Militär',
+       outcome:'[LAND] bleibt ungebunden — respektiert, aber ohne Schutzmacht.',
+       deltas:{dip:12,frei:12,mil:-8,zust:5,koal:3}},
+      {text:'Regionale Führungsrolle übernehmen', hint:'+18 Diplomatie, +10 Wirtschaft',
+       outcome:'[LAND] wird zum regionalen Anker für Stabilität.',
+       deltas:{dip:18,wirt:10,zust:12,stab:5,koal:8}}
+    ]},
+  { tag:'Gesellschaft', col:'var(--purple)',
+    title:'Kriegstrauma — psychische Gesundheitskrise in [LAND]',
+    desc:'28% der Bevölkerung zeigen PTSD-Symptome. Selbstmordrate verdoppelt. Das Sozialsystem bricht ein.',
+    choices:[
+      {text:'Nationales Gesundheitsprogramm — 3 Milliarden', hint:'+18 Zustimmung, −20 Wirtschaft',
+       outcome:'Therapeuten massenhaft ausgebildet. Langfristig stabilisierend.',
+       deltas:{zust:18,frei:8,wirt:-20,stab:5,koal:10}},
+      {text:'NGOs und Zivilgesellschaft', hint:'+12 Freiheit, +8 Zustimmung',
+       outcome:'Zivilgesellschaft starker. Nicht alle Betroffenen werden erreicht.',
+       deltas:{frei:12,zust:8,stab:6,wirt:-8,koal:5}},
+      {text:'Wirtschaft zuerst — Wohlstand heilt', hint:'+15 Wirtschaft, −10 Zustimmung',
+       outcome:'Wachstum schafft Jobs. Soziale Wunden bleiben sichtbar.',
+       deltas:{wirt:15,zust:-10,frei:-5,koal:-5},
+       surp:{text:'Soziale Ungleichheit explodiert. Neue Protestbewegung entsteht.',deltas:{zust:-9,stab:-7}}}
+    ]},
+  { tag:'Demokratie', col:'#dc2626',
+    title:'Erste Nachkriegswahl — wie fair ist [LAND]s Demokratie?',
+    desc:'Erste Nationalratwahlen nach dem Krieg. Opposition beklagt unfaire Bedingungen. Internationale Wahlbeobachter sind da.',
+    choices:[
+      {text:'Vollkommen freie und faire Wahlen', hint:'Demokratisch korrekt',
+       outcome:'Vorbildliche Wahlen. [LAND] gewinnt internationale Anerkennung.',
+       deltas:{frei:16,dip:14,zust:10,stab:6}},
+      {text:'Faire Wahlen — mit Vorteilen für die Regierung', hint:'Moralisch grenzwertig',
+       outcome:'Wahlbeobachter registrieren verdächtige Ergebnisse.',
+       deltas:{stab:5,frei:-10,dip:-7,zust:3}},
+      {text:'Wahlen manipulieren — Stabilität geht vor', hint:'Kurzfristig sicher — demokratisch fatal',
+       outcome:'Manipulation aufgedeckt. EU startet Ausschlussverfahren.',
+       deltas:{frei:-28,dip:-22,zust:-20,stab:-14},
+       surp:{text:'[LAND] auf Liste autokratischer Regime gesetzt.',deltas:{dip:-13,wirt:-16}}}
+    ]},
+  { tag:'Schuldenkrise', col:'var(--orange)',
+    title:'[LAND] vor dem Staatsbankrott — Kriegsschulden',
+    desc:'Nachkriegsschulden belasten den Haushalt massiv. IWF droht mit Zwangsprogramm.',
+    choices:[
+      {text:'Radikales Sparprogramm — IWF-Bedingungen', hint:'Haushalt gesichert — sozial brutal',
+       outcome:'IWF-Programm. Sozialleistungen gekürzt. Haushalt erholt sich.',
+       deltas:{wirt:14,zust:-18,stab:-8,koal:-12}},
+      {text:'Kontrollierte Inflation — Schulden entwerten', hint:'Politisch einfacher',
+       outcome:'Schuldenquote sinkt. Mittelschicht verliert Ersparnisse.',
+       deltas:{wirt:7,zust:-8,stab:-5,frei:-4}},
+      {text:'Schuldenerlass-Verhandlungen anführen', hint:'Risikoreich — möglicherweise transformativ',
+       outcome:'[LAND] überzeugt 12 Gläubiger. Teilweise Streichung. Internationale Solidarität.',
+       deltas:{wirt:12,dip:16,zust:8,stab:6}}
+    ]},
+
+  { tag:'Rechtsstaat', col:'#dc2626',
+    title:'Oppositionsführer unter Staatsverdacht',
+    desc:'Der prominenteste Oppositionspolitiker wird von der Staatsanwaltschaft wegen angeblicher Kriegskollaboration vorgeladen. Kritiker sehen politisch motivierte Justiz. Internationale Beobachter fordern Transparenz.',
+    choices:[
+      {text:'Vollständige Unabhängigkeit der Justiz garantieren', hint:'+18 Freiheit, +12 Zustimmung',
+       outcome:'Die Staatsanwaltschaft arbeitet frei. Das Verfahren endet mit Freispruch. [LAND]s Rechtsstaat gewinnt international Ansehen.',
+       deltas:{frei:18,zust:12,stab:-8,dip:10}},
+      {text:'Verfahren still unterstützen — Gegner schwächen', hint:'+10 Stabilität, −20 Freiheit',
+       outcome:'Der Oppositionsführer wird verurteilt. Die Demokratie [LAND]s verliert an Glaubwürdigkeit.',
+       deltas:{stab:10,frei:-20,zust:-15,dip:-12},
+       surp:{text:'Massenproteste erschüttern die Hauptstadt. EU leitet Rechtsstaatsverfahren ein.',deltas:{stab:-8,zust:-8}}},
+      {text:'Amnestie anbieten — Versöhnung statt Strafverfolgung', hint:'+12 Zustimmung, +8 Freiheit',
+       outcome:'Verfahren eingestellt. Versöhnungsgeste wirkt — Opposition bleibt aber misstrauisch.',
+       deltas:{zust:12,frei:8,stab:4,koal:-8}}
+    ]},
+  { tag:'Medien', col:'var(--orange)',
+    title:'Staatliche Desinformation — eigene Behörden unter Verdacht',
+    desc:'Ein investigativer Bericht belegt: Ein staatliches Kommunikationsbüro hat während des Krieges systematisch Falschinformationen verbreitet, um die Bevölkerung zu manipulieren. Die Presse ist empört.',
+    choices:[
+      {text:'Behörde auflösen und öffentlich entschuldigen', hint:'+20 Freiheit, +10 Zustimmung',
+       outcome:'[LAND] bekennt sich zur Wahrheit. Internationales Ansehen steigt. Die Bevölkerung vertraut den Institutionen wieder mehr.',
+       deltas:{frei:20,zust:10,stab:-8,dip:12}},
+      {text:'Interne Untersuchung — keine öffentliche Stellungnahme', hint:'−10 Zustimmung, −8 Freiheit',
+       outcome:'Die Untersuchung versickert. Medien bleiben misstrauisch. Das Vertrauen erholt sich nur langsam.',
+       deltas:{zust:-10,frei:-8,stab:5,koal:-4}},
+      {text:'Berichte als Angriff auf den Staat bezeichnen', hint:'−18 Freiheit, −15 Zustimmung',
+       outcome:'Journalist:innen werden bedroht. Die Wahrheit kommt trotzdem ans Licht.',
+       deltas:{frei:-18,zust:-15,dip:-10,stab:-5},
+       surp:{text:'EU startet Medienfreiheitsverfahren. Drei Journalisten beantragen internationalen Schutz.',deltas:{dip:-10,frei:-7}}}
+    ]},
+  { tag:'Medien', col:'var(--purple)',
+    title:'Desinformation nach dem Krieg',
+    desc:'Ausländische Akteure fluten [LAND]s Medien mit Fake-News. Vertrauen in Institutionen sinkt schnell.',
+    choices:[
+      {text:'Staatsunabhängige Faktencheckagentur', hint:'+10 Freiheit, langsam',
+       outcome:'Agentur eingerichtet. Medienkompetenz steigt langfristig.',
+       deltas:{frei:10,stab:7,zust:6,dip:5}},
+      {text:'Staatliches Faktencheck-Portal', hint:'Schnell — Missbrauchsgefahr',
+       outcome:'Opposition nennt es Propagandaorgan.',
+       deltas:{stab:5,frei:-11,zust:-5}},
+      {text:'Externe Plattformen zur Löschung zwingen', hint:'Kontrovers',
+       outcome:'Inhalte verbreiten sich. EU mahnt Freiheit.',
+       deltas:{frei:-13,dip:-7,stab:4}}
+    ]}
+]};
+
+
+// ══════════════════════════════════════════════════════
+// TASTATURSTEUERUNG — Enter/Space zum Weiterklicken
+// ══════════════════════════════════════════════════════
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  // Phase-Screen
+  const ps = document.getElementById('phase-screen');
+  if (ps && ps.style.display !== 'none') { e.preventDefault(); dismissPhaseScreen(); return; }
+  // Outcome-Card (Weiter-Button)
+  const nb = document.getElementById('next-btn');
+  const oc = document.getElementById('outcome-card');
+  if (oc && oc.style.display !== 'none' && nb && !nb.disabled) { e.preventDefault(); nextTurn(); return; }
+});
+
+// ══════════════════════════════════════════════════════
+// CRISES
+// ══════════════════════════════════════════════════════
+const CRISES = {
+  1:[
+    {text:'Überschwemmung trifft drei Industrieregionen. Sofortkosten: 3 Milliarden. Katastrophenfonds nicht ausreichend.', deltas:{wirt:-8,zust:-4}},
+    {text:'Staatsbank-Vorsitzender wegen Untreue verhaftet. Die Wirtschaft ist erschüttert', deltas:{wirt:-8,zust:-6,stab:-4}},
+    {text:'Generalstreik legt öffentliche Dienste lahm. Koalitionspartner stellt Bedingungen.', deltas:{zust:-8,stab:-6,wirt:-4,koal:-7}},
+    {text:'Extremdürre: Ernte um 40% eingebrochen. Nahrungsmittelpreise steigen um 35%.', deltas:{zust:-7,wirt:-7}},
+    {text:'Korruptionsskandal im Bauministerium: Staatsaufträge systematisch manipuliert.', deltas:{zust:-10,stab:-5,frei:-4,koal:-5}},
+    {text:'Pharmaskandal: Gesundheitsministerium ignorierte Warnungen über gefahrliches Medikament.', deltas:{zust:-11,frei:-5,stab:-4}},
+    {text:'Massenentlassungen: Grosskonzern streicht 14.000 Arbeitsplätze.', deltas:{wirt:-9,zust:-9,stab:-3}},
+    {text:'Wohnungskrise: Mietpreise 80% höher als vor fünf Jahren. Soziale Unruhen.', deltas:{zust:-8,stab:-6}}
+  ],
+  2:[
+    {text:'Cyberangriff auf kritische Infrastruktur: Strom und Wasser in drei Regionen ausgefallen.', deltas:{stab:-12,wirt:-8,mil:-4}},
+    {text:'Kriegsflüchtlinge überlasten Sozialsysteme vollständig. Haushalt am Limit.', deltas:{wirt:-10,zust:-7,stab:-5}},
+    {text:'Ausländischer Geheimdienst in der Hauptstadt enttarnt — operiert seit Jahren in [LAND].', deltas:{stab:-9,frei:-7,zust:-5}},
+    {text:'Internationale Finanzkrise: Börse bricht um 26% ein. [LAND] stark betroffen.', deltas:{wirt:-14,zust:-7}},
+    {text:'Koalitionspartner droht mit Ausstieg wegen Kriegspolitik. Regierungskrise.', deltas:{stab:-12,zust:-7,koal:-12}},
+    {text:'Sabotage an [LAND]s Gaspipeline. Versorgung unterbrochen.', deltas:{wirt:-12,stab:-7}},
+    {text:'Energieembargo durch kriegsführende Partei — 45% der Energieimporte weg.', deltas:{wirt:-14,zust:-10,stab:-6}},
+    {text:'Extremistische Gruppe nutzt Kriegschaos für Anschlag auf Regierungsgebäude.', deltas:{stab:-13,zust:-9,frei:-7}}
+  ],
+  3:[
+    {text:'Journalist dokumentiert Staatsbeteiligung an Kriegsverbrechen.', deltas:{zust:-12,frei:-7,dip:-9}},
+    {text:'Oligarchen blockieren Reformgesetz durch Lobbyarbeit im Parlament.', deltas:{frei:-9,stab:-7,zust:-5,koal:-4}},
+    {text:'Wirtschaftsspionage durch ehemalige Verbündete aufgedeckt.', deltas:{wirt:-9,dip:-10,stab:-4}},
+    {text:'Populistische Partei überholt Regierungspartei in Umfragen.', deltas:{zust:-12,stab:-9,koal:-7}},
+    {text:'Hungersnot in Grenzregion durch Nachkriegsfolgen. Internationale Kritik.', deltas:{zust:-9,wirt:-7,frei:-4}},
+    {text:'IWF senkt [LAND]s Wachstumsprognose auf 0,3%. Investoren meiden weitgehend das Land.', deltas:{wirt:-10,dip:-4}},
+    {text:'Kriegstrauma: Massenarbeitslosigkeit bei Veteranen führt zu sozialen Spannungen.', deltas:{zust:-9,stab:-8,wirt:-6}}
+  ]
+};
+</script>
+</body>
+</html>
